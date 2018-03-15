@@ -100,6 +100,8 @@ class ArielCore {
 		void printCoreStatistics();
 		void printTraceEntry(const bool isRead, const uint64_t address, const uint32_t length);
 
+		bool shouldUpdateCycle() { return updateCycle; }
+
 	private:
 		bool processNextEvent();
 		bool refillQueue();

@@ -574,7 +574,7 @@ int ArielCPU::forkPINChild(const char* app, char** args, std::map<std::string, s
 	return 0;
 }
 
-bool ArielCPU::tick( SST::Cycle_t cycle) {
+bool ArielCPU::tick( SST::Cycle_t cycle, bool *status ) {
 	stopTicking = false;
 	output->verbose(CALL_INFO, 16, 0, "Main processor tick, will issue to individual cores...\n");
 
@@ -584,13 +584,18 @@ bool ArielCPU::tick( SST::Cycle_t cycle) {
 	// Keep ticking unless one of the cores says it is time to stop.
 	for(uint32_t i = 0; i < core_count; ++i) {
 		cpu_cores[i]->tick();
-		
+
+		if( i==0 && !cpu_cores[i]->shouldUpdateCycle() ) {
+			*status = false;
+			break;
+		}
+
 		if(cpu_cores[i]->isCoreHalted()) {
 			stopTicking = true;
 			break;
 		}
 	}
-	
+
 	// Its time to end, that's all folks
 	if(stopTicking) {
 		primaryComponentOKToEndSim();

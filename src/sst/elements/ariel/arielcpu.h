@@ -43,7 +43,7 @@ class ArielCPU : public SST::Component {
         virtual void init(unsigned int phase);
         virtual void setup() {}
         virtual void finish();
-        virtual bool tick( SST::Cycle_t );
+        virtual bool tick( SST::Cycle_t, bool * );
         int forkPINChild(const char* app, char** args, std::map<std::string, std::string>& app_env);
 
     private:
