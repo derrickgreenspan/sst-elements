@@ -297,7 +297,9 @@ public:
 
     void printCacheArray(Output &out) {
         for (unsigned int i = 0; i < numLines_; i++) {
-            out.output("   %u %s\n", i, lines_[i]->getString().c_str());
+            std::string linestr = lines_[i]->getString();
+            if (linestr.find("State: I ") == std::string::npos)
+                out.output("   %u %s\n", i, linestr.c_str());
         }
     }
 

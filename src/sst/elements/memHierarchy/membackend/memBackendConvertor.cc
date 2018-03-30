@@ -244,3 +244,37 @@ size_t MemBackendConvertor::getMemSize() {
 uint32_t MemBackendConvertor::getRequestWidth() {
     return m_backend->getRequestWidth();
 }
+
+void MemBackendConvertor::printStatus(Output &out) {
+    out.output("  MemHierarchy::MemBackendConvertor status for %s\n", getName().c_str());
+    
+    // RequestQueue/pending requests
+    out.output("    Request queue size: %zu\n", m_requestQueue.size());
+    for (std::deque<BaseReq*>::iterator it = m_requestQueue.begin(); it != m_requestQueue.end(); it++) {
+        out.output("      %s\n", (*it)->getString().c_str());
+    }
+
+    out.output("    Pending requests: %zu\n", m_pendingRequests.size());
+    for (std::map<uint32_t,BaseReq*>::iterator it = m_pendingRequests.begin(); it != m_pendingRequests.end(); it++) {
+        out.output("      %" PRIu64 " : %s\n", it->first, it->second->getString().c_str());
+    }
+
+    // Flush status
+    out.output("    Waiting flushes: %zu\n", m_waitingFlushes.size());
+    for (std::map<MemEvent*, std::set<MemEvent*, memEventCmp> >::iterator it = m_waitingFlushes.begin(); it != m_waitingFlushes.end(); it++) {
+        out.output("      %s waiting on %zu\n", it->first->getVerboseString().c_str(), it->second.size());
+        for (std::set<MemEvent*,memEventCmp>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++) {
+            out.output("        %s\n", (*it1)->getVerboseString().c_str());
+        }
+    }
+    
+    out.output("    Reverse map of dependent requests: %zu\n", m_dependentRequests.size());
+    for (std::map<MemEvent*, std::set<MemEvent*, memEventCmp> >::iterator it = m_dependentRequests.begin(); it != m_dependentRequests.end(); it++) {
+        out.output("      %s stalling %zu flushes\n", it->first->getVerboseString().c_str(), it->second.size());
+        for (std::set<MemEvent*,memEventCmp>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++) {
+            out.output("        %s\n", (*it1)->getVerboseString().c_str());
+        }
+    }
+
+    out.output("  End MemHierarchy::MemBackendConvertor\n");
+}

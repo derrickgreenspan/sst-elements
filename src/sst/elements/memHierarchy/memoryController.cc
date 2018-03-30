@@ -562,6 +562,8 @@ void MemController::printStatus(Output &statusOut) {
     if (link_) 
         link_->printStatus(statusOut);
     
+    if (memBackendConvertor_)
+        memBackendConvertor_->printStatus(statusOut);
     statusOut.output("End MemHierarchy::MemoryController\n\n");
 }
 

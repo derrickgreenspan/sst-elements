@@ -167,6 +167,9 @@ class MemBackendConvertor : public SubComponent {
         return m_pendingRequests[id]->getRqstr();
     }
 
+    /* Debug */
+    virtual void printStatus(Output &out);
+
     // generates a MemReq for the target custom command
     // this is utilized by inherited ExtMemBackendConvertor's
     // such that all the requests are consolidated in one place
