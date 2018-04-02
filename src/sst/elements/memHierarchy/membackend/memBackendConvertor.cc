@@ -220,6 +220,13 @@ void MemBackendConvertor::doResponse( ReqId reqId, uint32_t flags ) {
             delete req;
         }
     }
+
+    // Sanity check m_waitingFlushes
+    for (auto it = m_waitingFlushes.begin(); it != m_waitingFlushes.end(); it++) {
+        if (it->second.size() > m_pendingRequests.size())
+            m_dbg.fatal(CALL_INFO, -1, "%s, Error: Flush is waiting for %zu requests, there are only %zu pending requests. Flush: %s\n", 
+                    getName().c_str(), it->second.size(), m_pendingRequests.size(), it->first->getVerboseString().c_str());
+    }
 }
 
 void MemBackendConvertor::sendResponse( SST::Event::id_type id, uint32_t flags ) {
@@ -264,7 +271,10 @@ void MemBackendConvertor::printStatus(Output &out) {
     for (std::map<MemEvent*, std::set<MemEvent*, memEventCmp> >::iterator it = m_waitingFlushes.begin(); it != m_waitingFlushes.end(); it++) {
         out.output("      %s waiting on %zu\n", it->first->getVerboseString().c_str(), it->second.size());
         for (std::set<MemEvent*,memEventCmp>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++) {
-            out.output("        %s\n", (*it1)->getVerboseString().c_str());
+            if (*it1 != nullptr)
+                out.output("        %s\n", (*it1)->getVerboseString().c_str());
+            else 
+                out.output("        invalid event\n");
         }
     }
     
