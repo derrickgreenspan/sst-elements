@@ -221,8 +221,27 @@ class MemBackendConvertor : public SubComponent {
                 }
             }
 
-            if (dependsOn.empty()) return false;
+            if (dependsOn.empty()) {
+            // Sanity check m_waitingFlushes
+                for (auto it = m_waitingFlushes.begin(); it != m_waitingFlushes.end(); it++) {
+                if (it->second.size() > m_pendingRequests.size()) {
+                    m_dbg.output("%s, In setup, Error: Flush is waiting for %zu requests, there are only %zu pending requests. Flush: %s\n", 
+                            getName().c_str(), it->second.size(), m_pendingRequests.size(), it->first->getVerboseString().c_str());
+                    printStatus(m_dbg);
+                }
+                }
+                return false;
+            }
             m_waitingFlushes.insert(std::make_pair(ev, dependsOn));
+    
+            // Sanity check m_waitingFlushes
+        for (auto it = m_waitingFlushes.begin(); it != m_waitingFlushes.end(); it++) {
+            if (it->second.size() > m_pendingRequests.size()) {
+                m_dbg.output("%s, Error: In setup, Flush is waiting for %zu requests, there are only %zu pending requests. Flush: %s\n", 
+                    getName().c_str(), it->second.size(), m_pendingRequests.size(), it->first->getVerboseString().c_str());
+                printStatus(m_dbg);
+            }
+        }
             return true; 
         }
 

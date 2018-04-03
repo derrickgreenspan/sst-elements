@@ -223,9 +223,11 @@ void MemBackendConvertor::doResponse( ReqId reqId, uint32_t flags ) {
 
     // Sanity check m_waitingFlushes
     for (auto it = m_waitingFlushes.begin(); it != m_waitingFlushes.end(); it++) {
-        if (it->second.size() > m_pendingRequests.size())
-            m_dbg.fatal(CALL_INFO, -1, "%s, Error: Flush is waiting for %zu requests, there are only %zu pending requests. Flush: %s\n", 
+        if (it->second.size() > m_pendingRequests.size()) {
+            m_dbg.output("%s, Error: Flush is waiting for %zu requests, there are only %zu pending requests. Flush: %s\n", 
                     getName().c_str(), it->second.size(), m_pendingRequests.size(), it->first->getVerboseString().c_str());
+            printStatus(m_dbg);
+        }
     }
 }
 
