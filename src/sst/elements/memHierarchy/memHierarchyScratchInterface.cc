@@ -1,9 +1,9 @@
 // -*- mode: c++ -*-
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 //
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 //
 // Portions are copyright of other developers:
@@ -39,6 +39,8 @@ MemHierarchyScratchInterface::MemHierarchyScratchInterface(SST::Component *comp,
     if (!size.hasUnits("B"))
         output.fatal(CALL_INFO, -1, "Invalid param (%s): scratchpad_size - must have units of 'B'. SI units ok. You specified '%s'\n", getName().c_str(), size.toString().c_str());
     remoteMemStart_ = size.getRoundedValue();
+
+    initDone_ = false;
 }
 
 
@@ -56,15 +58,26 @@ void MemHierarchyScratchInterface::init(unsigned int phase) {
                 baseAddrMask_ = ~(memEventC->getLineSize() - 1);
                 rqstr_ = memEventC->getSrc();
                 allNoncache_ = (Endpoint::Scratchpad == memEventC->getType());
+                initDone_ = true;
             }
         }
         delete ev;
+    }
+
+    if (initDone_) {
+        while (!initSendQueue_.empty()) {
+            link_->sendInitData(initSendQueue_.front());
+            initSendQueue_.pop();
+        }
     }
 }
 
 void MemHierarchyScratchInterface::sendInitData(SimpleMem::Request *req) {
     MemEventInit * event = new MemEventInit(getName(), Command::GetX, req->addrs[0], req->data);
-    link_->sendInitData(event);
+    if (initDone_)
+        link_->sendInitData(event);
+    else 
+        initSendQueue_.push(event);
 }
 
 

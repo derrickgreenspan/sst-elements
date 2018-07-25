@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 //
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 //
 // Portions are copyright of other developers:
@@ -54,14 +54,14 @@ Stake::Stake( Component* owner, Params& params ) :
           out->fatal(CALL_INFO, -1, "Failed to specify the RISC-V binary" );
         }
 
-        out->verbose(CALL_INFO, 1, 0, "RISC-V Cores = %" PRIu32 "\n", cores );
+        out->verbose(CALL_INFO, 1, 0, "RISC-V Cores = %" PRIu64 "\n", cores );
         out->verbose(CALL_INFO, 1, 0, "Starting PC = 0x%" PRIx64 "\n", pc );
         out->verbose(CALL_INFO, 1, 0, "ISA = %s\n", isa.c_str() );
         if( ext.length() > 0 ){
-          out->verbose(CALL_INFO, 1, 0, "RoCC Extension = %s\n", ext );
+          out->verbose(CALL_INFO, 1, 0, "RoCC Extension = %s\n", ext.c_str() );
         }
         if( extlib.length() > 0 ){
-          out->verbose(CALL_INFO, 1, 0, "External Library = %s\n", extlib );
+          out->verbose(CALL_INFO, 1, 0, "External Library = %s\n", extlib.c_str() );
         }
 
         done = false;
@@ -182,7 +182,7 @@ void Stake::generate(MirandaRequestQueue<GeneratorRequest*>* q) {
         }
 
         spike = new sim_t(isa.c_str(), cores, false, (reg_t)(pc),
-                          mems, htif_args, hartids, 2 );
+                          mems, htif_args, hartids, 2, 0, false );
 
         // setup the pre-runtime parameters
         spike->set_debug(false);

@@ -1,13 +1,27 @@
-    
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
+// Government retains certain rights in this software.
+//
+// Copyright (c) 2009-2018, NTESS
+// All rights reserved.
+//
+// Portions are copyright of other developers:
+// See the file CONTRIBUTORS.TXT in the top level directory
+// the distribution for more information.
+//
+// This file is part of the SST software package. For license
+// information, see the LICENSE file in the top level directory of the
+// distribution.
 
 	class MuxUnit : public Unit {
 		struct Entry {
 			enum Op { Load, Store } op;
-			Entry( Op op, UnitBase* src, MemReq* req, Callback callback=NULL ) : 
-				op(op), src(src), req(req), callback(callback) {}
+			Entry( Op op, UnitBase* src, MemReq* req, uint64_t start, Callback callback=NULL ) : 
+				op(op), src(src), req(req), start(start), callback(callback) {}
 			UnitBase* src;
 			MemReq* req;
 			Callback callback;
+			uint64_t start;
 		};
 
 	  public:
@@ -19,13 +33,16 @@
             m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"%s addr=%#" PRIx64 " length=%lu\n",src->name().c_str(), req->addr,req->length);
 			if ( ! m_blockedSrc && ! m_scheduled ) {
 				if ( m_unit->store( this, req ) ) {
+
+                    m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"blocking\n");
 					m_blockedSrc = src;
 					return true;
 				} else { 
 					return false; 
 				}
 			} else {
-				m_blockedQ.push_back( Entry( Entry::Store, src, req ) );	
+                m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"blocking\n");
+				m_blockedQ.push_back( Entry( Entry::Store, src, req, m_model.getCurrentSimTimeNano() ) );	
 				return true;
 			}
 		}
@@ -34,15 +51,23 @@
         bool load( UnitBase* src, MemReq* req, Callback callback ) {
             m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"%s addr=%#" PRIx64 " length=%lu\n",src->name().c_str(), req->addr,req->length);
 
+			uint64_t now = m_model.getCurrentSimTimeNano();
 			if ( ! m_blockedSrc && ! m_scheduled ) {
-				if ( m_unit->load( this, req, callback ) ) {
+				if ( m_unit->load( this, req, [=]() {
+							m_dbg.verbosePrefix( prefix(), CALL_INFO_LAMBDA, "load",1,MUX_MASK, "load done latency=%" PRIu64 "\n",
+												m_model.getCurrentSimTimeNano() - now );  
+							callback();
+					} ) ) 
+				{
+                    m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"blocking\n");
 					m_blockedSrc = src;
 					return true;
 				} else { 
 					return false; 
 				}
 			} else {
-				m_blockedQ.push_back( Entry( Entry::Load, src, req, callback ) );	
+                m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"blocking\n");
+				m_blockedQ.push_back( Entry( Entry::Load, src, req, m_model.getCurrentSimTimeNano(), callback ) );	
 				return true;
 			}
 		}
@@ -53,14 +78,22 @@
 			assert( ! m_blockedQ.empty() );
 			Entry& entry = m_blockedQ.front();
 
+			Callback callback =  entry.callback;
 			bool blocked = false;
+			uint64_t now = entry.start;
 			if ( Entry::Load == entry.op ) {
-				blocked = m_unit->load( this, entry.req, entry.callback );
+				blocked = m_unit->load( this, entry.req, 
+						[=](){
+								m_dbg.verbosePrefix( prefix(), CALL_INFO_LAMBDA, "processQ",1,MUX_MASK, "load done latency=%" PRIu64 "\n",
+										m_model.getCurrentSimTimeNano() - now );  
+								callback();
+							} );
 			} else {
 				blocked = m_unit->store( this, entry.req );
 			}	
 
 			if ( ! blocked ) {
+                m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"unblocking\n");
 				m_model.schedResume( 0, entry.src  );
 				if ( m_blockedQ.size() > 1 ) {
                     m_scheduled = true;
@@ -75,9 +108,11 @@
 		void resume( UnitBase* src = NULL ) {
             m_dbg.verbosePrefix(prefix(),CALL_INFO,2,MUX_MASK,"\n");
 			if ( m_blockedSrc ) {
+                m_dbg.verbosePrefix(prefix(),CALL_INFO,1,MUX_MASK,"unblocking\n");
 				m_model.schedResume( 0, m_blockedSrc );
 				m_blockedSrc = NULL;
 			}
+                m_dbg.verbosePrefix(prefix(),CALL_INFO,2,MUX_MASK,"scheduled=%d numBlocked=%zu\n",m_scheduled, m_blockedQ.size());
 
 			if ( !m_scheduled && ! m_blockedQ.empty() ) {
 				processQ();

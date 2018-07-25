@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 //
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 //
 // This file is part of the SST software package. For license
@@ -66,6 +66,7 @@ static const ElementInfoParam Samba_params[] = {
     {"page_walk_latency", "Each page table walk latency in nanoseconds", "50"},
     {"self_connected", "Determines if the page walkers are acutally connected to memory hierarchy or just add fixed latency (self-connected)", "0"},
     {"emulate_faults", "This indicates if the page faults should be emulated through requesting pages from Opal", "0"},
+    {"opal_latency", "latency to communicate to the centralized memory manager", "32ps"},
     {NULL, NULL, NULL},
 };
 

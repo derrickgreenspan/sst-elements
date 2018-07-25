@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 // 
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 // 
 // This file is part of the SST software package. For license
@@ -59,14 +59,17 @@ namespace SST {
 				// Following are the page table components of the application running on the Ariel instance that owns this Samba unit
 				// Note, the application might be multi-threaded, however, all threads will share the sambe page table components below
 
-				long long int CR3;
-				std::map<long long int, long long int> PGD;
-				std::map<long long int, long long int> PUD;
-				std::map<long long int, long long int> PMD;
-				std::map<long long int, long long int> PTE;
-				std::map<long long int,int>  MAPPED_PAGE_SIZE4KB;
-				std::map<long long int,int>  MAPPED_PAGE_SIZE2MB;
-				std::map<long long int,int>  MAPPED_PAGE_SIZE1GB;
+				Address_t CR3;
+				std::map<Address_t, Address_t> PGD;
+				std::map<Address_t, Address_t> PUD;
+				std::map<Address_t, Address_t> PMD;
+				std::map<Address_t, Address_t> PTE;
+				std::map<Address_t,int>  MAPPED_PAGE_SIZE4KB;
+				std::map<Address_t,int>  MAPPED_PAGE_SIZE2MB;
+				std::map<Address_t,int>  MAPPED_PAGE_SIZE1GB;
+
+				std::map<Address_t,int> PENDING_PAGE_FAULTS;
+				std::map<Address_t,int> PENDING_SHOOTDOWN_EVENTS;
 
 
 			private:
@@ -101,7 +104,7 @@ namespace SST {
 				SST::Link** Samba_link;
 
 
-				Statistic<long long int>* statReadRequests;
+				Statistic<uint64_t>* statReadRequests;
 
 
 		};

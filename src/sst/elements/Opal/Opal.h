@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 // 
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 // 
 // This file is part of the SST software package. For license
@@ -23,6 +23,7 @@
 #include <fstream>
 #include <sstream>
 #include <map>
+#include <algorithm>
 
 #include <stdio.h>
 #include <stdint.h>
@@ -51,7 +52,7 @@ namespace SST
 	namespace OpalComponent
 	{
 
-		class core_handler;
+		class NodePrivateInfo;
 
 		class Opal : public SST::Component
 		{
@@ -60,14 +61,25 @@ namespace SST
 				Opal( SST::ComponentId_t id, SST::Params& params); 
 				void setup()  { };
 				void finish();
-				void setNextMemPool( int node );
-				long long int allocLocalMemPool( int node, int link, long long int vAddress, int size );
-				long long int allocSharedMemPool( int node, int link, long long int vAddress, int size );
-				void handleEvent(SST::Event* event) {};
-				void handleRequest( SST::Event* e );
 				bool tick(SST::Cycle_t x);
-				core_handler * Handlers;
-				std::queue<OpalEvent*> hintlist;
+
+				void setNextMemPool( int node );
+
+
+				REQRESPONSE allocateLocalMemory(int node, int coreId, uint64_t vAddress, int fault_level, int pages);
+				REQRESPONSE allocateSharedMemory(int node, int coreId, uint64_t vAddress, int fault_level, int pages);
+				REQRESPONSE allocateFromReservedMemory(int node, uint64_t reserved_vAddress, uint64_t vAddress, int pages);
+				REQRESPONSE isAddressReserved(int node, uint64_t vAddress);
+
+
+				bool processRequest(int node, int coreId, uint64_t vAddress, int fault_level, int size);
+				void processHint(int node, int fileId, uint64_t vAddress, int size);
+				void processShootdownEvent(int node, int coreId, uint64_t vaddress, uint64_t paddress, int fault_level);
+				void processInvalidAddrEvent(int node, int coreId, uint64_t vaddress);
+				void processTLBShootdownAck(int node, int coreId, int shootdownId);
+				void tlbShootdown(int node, int coreId, int shootdownId);
+				void migratePages(int node, int coreId, int pages);
+
 				std::queue<OpalEvent*> requestQ;
 
 				~Opal() { };
@@ -110,8 +122,15 @@ namespace SST
 
 					// Optional since there is nothing to document
 					SST_ELI_DOCUMENT_STATISTICS(
-							{ "local_mem_usage", "Number of local memory frames used", "requests", 1},
-							{ "shared_mem_usage", "Number of local memory frames used", "requests", 1},
+							{ "local_mem_usage", "Number of pages allocated in local memory", "requests", 1},
+							{ "shared_mem_usage", "Number of pages allocated in shared memory", "requests", 1},
+							{ "local_mem_mapped", "Number of pages mapped in local memory", "requests", 1},
+							{ "shared_mem_mapped", "Number of pages mapped in shared memory", "requests", 1},
+							{ "local_mem_unmapped", "Number of pages unmapped while memory allocation in local memory", "requests", 1},
+							{ "shared_mem_unmapped", "Number of pages unmapped while memory allocation in local memory", "requests", 1},
+							{ "tlb_shootdowns", "Number of tlb shootdowns initiated in a node", "requests", 1},
+							{ "tlb_shootdown_delay", "Total tlb shootdown delays in a node(initiating core)", "requests", 1},
+							{ "num_of_pages_migrated", "Number of pages migrated", "requests", 1},
 							)
 
 					SST_ELI_DOCUMENT_PORTS(
@@ -128,34 +147,23 @@ namespace SST
 					Opal(const Opal&); // do not implement
 					void operator=(const Opal&); // do not implement
 
-					uint32_t cores_per_node;
 					uint32_t num_nodes;
-
-					SST::Link * m_memChan; 
-					SST::Link ** samba_to_opal; 
-
-					SST::Link * event_link; // Note that this is a self-link for events
-
-					Pool * mempools; // This represents the memory pools of the system
-
-					uint32_t num_shared_mempools;
+					uint32_t num_cores;
 
 					//shared memory - memory pool number and its pool
-					std::map<int, Pool*> shared_mem;
-					long long int shared_mem_size;
+					//std::map<int, Pool*> shared_mem;
+					Pool **sharedMemoryInfo;
+					uint64_t shared_mem_size;
+					uint32_t num_shared_mempools;
 
-					//local memory - core number and its pool
-					std::map<int, Pool*> local_mem;
-					std::map<int, long long int> local_mem_size;
+					//node specific information
+					NodePrivateInfo **nodeInfo;
 
-					//next allocation memory (local/shared)
-					std::map<int, int> nextallocmem;
-					std::map<int, int> allocatedmempool;
+					//TLB shootdown information
+					std::map<int, std::pair<int, int> > tlbShootdownInfo;
 
-					//memory allocation policy. 0:proportional  1: alternate  2: round robin
-					uint32_t allocpolicy;
-
-					unsigned int latency; // The page fault latency/ the time spent by Opal to service a memory allocation request
+					//reserved memory to communicate
+					std::map<int, std::pair<std::list<int>*, std::list<uint64_t>* > > mmapFileIdHints;
 
 					long long int max_inst;
 					char* named_pipe;
@@ -164,69 +172,169 @@ namespace SST
 					Output* output;
 					int verbosity;
 
-					Statistic<long long int>* statReadRequests;
-					Statistic<long long int>* statWriteRequests;
-					Statistic<long long int>* statAvgTime;
+					Statistic<uint64_t>* statReadRequests;
+					Statistic<uint64_t>* statWriteRequests;
+					Statistic<uint64_t>* statAvgTime;
+					Statistic<uint64_t>* statPagesMigrated;
 
 
 		};// END Opal
 
-		class core_handler
+		class CorePrivateInfo
 		{
 			public:
 
 				int id;
-				int nodeID;
-				SST::Link * singLink;
+				int nodeId;
+				int coreId;
+				SST::Link * coreLink;
+				SST::Link * mmuLink;
 				int dummy_address;
-				core_handler() { dummy_address = 0;}
+				CorePrivateInfo() { dummy_address = 0;}
 				unsigned int latency;
 				Opal *owner;
 				void setOwner(Opal *owner_) { owner = owner_; }
 
 				void handleRequest(SST::Event* e)
 				{
-					OpalEvent *ev =  dynamic_cast<OpalComponent::OpalEvent*> (e);
+					OpalEvent *ev =  static_cast<OpalComponent::OpalEvent*> (e);
+					ev->setNodeId(nodeId);
+					ev->setCoreId(coreId);
+					owner->requestQ.push(ev);
 
-					switch(ev->getType())
-					{
-					case EventType::HINT:
-						{
-
-							//std::cerr << "MLM Hint(0) : level "<< ev->hint << " Starting address is "<< std::hex << ev->getAddress();
-                            //std::cerr << std::dec << " Size: "<< ev->getSize();
-                            //std::cerr << " Ending address is " << std::hex << ev->getAddress() + ev->getSize() - 1;
-                            //std::cerr << std::dec << std::endl;
-						}
-						break;
-					case EventType::MMAP:
-						{
-				            std::cerr << "MLM mmap(" << ev->fileID<< ") : level "<< ev->hint << " Starting address is "<< std::hex << ev->getAddress();
-							std::cerr << std::dec << " Size: "<< ev->getSize();
-							std::cerr << " Ending address is " << std::hex << ev->getAddress() + ev->getSize() - 1;
-							std::cerr << std::dec << std::endl;
-						}
-						break;
-
-					case EventType::UNMAP:
-						{
-							std::cout<<"Opal has received an UNMAP CALL with virtual address: "<<ev->getAddress()<<" Size: "<<ev->getSize()<<std::endl;
-							owner->requestQ.push(ev);
-						}
-						break;
-
-					default:
-						{
-							//std::cout<<"Opal has received a REQUEST CALL with virtual address: "<< std::hex << ev->getAddress()<<" Size: "<<ev->getSize()<<std::endl;
-							ev->setNodeId(nodeID);
-							ev->setLinkId(id);
-							owner->requestQ.push(ev);
-						}
-					}
 				}
 
-		};// END core_handler
+				// number of shootdown acknowledgments required
+				uint32_t sdAckCount;
+
+				// list of addresses to be invalidated
+				std::list<std::pair<uint64_t, std::pair<uint64_t, int> > > invalidAddrs;
+
+				void addInvalidAddress(uint64_t pAddress, uint64_t vAddress, int fault_level) { invalidAddrs.push_back(std::make_pair(pAddress,std::make_pair(vAddress,fault_level))); }
+				void setInvalidAddresses (std::list<std::pair<uint64_t, std::pair<uint64_t, int> > > ia) { invalidAddrs = ia; }
+				std::list<std::pair<uint64_t, std::pair<uint64_t, int> > > * getInvalidAddresses() { return &invalidAddrs; }
+
+				uint64_t cr3;
+
+		};// END CorePrivateInfo
+
+		class NodePrivateInfo
+		{
+			public:
+				NodePrivateInfo(Opal *_owner, uint32_t node, Params params) {
+					owner = _owner;
+					node_num = node;
+					cores = (uint32_t) params.find<uint32_t>("cores", 1);
+					clock = (uint32_t) params.find<uint32_t>("clock", 2000); // in MHz
+					latency = (uint32_t) params.find<uint32_t>("latency", 1);
+					memoryAllocationPolicy = (uint32_t) params.find<uint32_t>("allocation_policy", 0);
+					page_migration = (uint32_t) params.find<uint32_t>("page_migration", 0);
+					page_migration_policy = (uint32_t) params.find<uint32_t>("page_migration_policy", 0);
+					num_pages_to_migrate = (uint32_t) params.find<uint32_t>("num_pages_to_migrate", 0);
+					nextallocmem = 0;
+					allocatedmempool = 0;
+					pool = new Pool(owner, (Params) params.find_prefix_params("memory."), SST::OpalComponent::MemType::LOCAL, node);
+					memory_size = (uint32_t) params.find<uint32_t>("memory.size", 1);
+					page_size = (uint32_t) params.find<uint32_t>("memory.frame_size", 4);
+					coreInfo = new CorePrivateInfo[cores];
+
+					std::cerr << "Node: " << node_num << " Allocation policy: " << memoryAllocationPolicy << std::endl;
+
+					for(uint32_t i=0; i<cores; i++) {
+						coreInfo[i].latency = latency;
+						coreInfo[i].nodeId = node_num;
+						coreInfo[i].coreId = i;
+						coreInfo[i].owner = owner;
+					}
+
+				}
+
+				Opal *owner;
+				uint32_t node_num;
+				uint32_t cores;
+				uint32_t clock;
+				uint32_t latency;
+
+				/* core specific information*/
+				CorePrivateInfo *coreInfo;
+
+				/* allocation policies */
+				uint32_t memoryAllocationPolicy;
+				int nextallocmem;
+				int allocatedmempool;
+
+				/*page migration information*/
+				int page_migration;
+				int page_migration_policy;
+				int num_pages_to_migrate;
+
+				/* local memory */
+				Pool* pool;
+				uint32_t page_size; // page size of the node in KB's
+				uint32_t memory_size; // in pages
+				uint32_t pages_available;
+				std::map<uint64_t, std::pair<uint64_t, int> > localPageList; // allocated frame and virtual address, fault level
+
+				//shared memory info
+				std::map<uint64_t, std::pair<uint64_t, int> > globalPageList;
+
+				//virtual address, fileId, size
+				std::map<uint64_t, std::pair<int, std::pair<int, int> > > reservedSpace;
+
+
+
+				void insertFrame(int coreId, uint64_t pAddress, uint64_t vAddress, int fault_level, SST::OpalComponent::MemType memType) {
+					if(4==fault_level)
+						coreInfo[coreId].cr3 = pAddress;
+					else if( memType == SST::OpalComponent::MemType::LOCAL ) {
+						localPageList[pAddress] = std::make_pair(vAddress,fault_level);
+					}
+					else if( memType == SST::OpalComponent::MemType::SHARED ) {
+						globalPageList[pAddress] = std::make_pair(vAddress,fault_level);
+					}
+					else
+						std::cout << "Opal: insert frame Error!!!!"  <<std::endl;
+
+				}
+
+				void removeFrame(uint64_t pAddress, SST::OpalComponent::MemType memType) {
+					if( memType == SST::OpalComponent::MemType::LOCAL ) {
+						localPageList.erase(pAddress);
+					}
+					else if( memType == SST::OpalComponent::MemType::SHARED ) {
+						globalPageList.erase(pAddress);
+					}
+					else
+						std::cout << "Opal: insert frame Error!!!!"  <<std::endl;
+				}
+
+				// choose pages to migrate randomly
+				std::list<std::pair<uint64_t, std::pair<uint64_t, int> > > getPagesToMigrate(int pages) {
+					std::list<std::pair<uint64_t, std::pair<uint64_t, int> > > migrate_pages;
+					for(int i=0; i<pages; i++) {
+						auto it = localPageList.begin();
+						std::advance(it, rand() % localPageList.size());
+						migrate_pages.push_back(std::make_pair(it->first, it->second));
+						localPageList.erase(it->first);
+					}
+
+					return migrate_pages;
+				}
+
+				// choose a single page to migrate randomly
+				std::pair<uint64_t, std::pair<uint64_t, int> > getPageToMigrate() {
+					std::pair<uint64_t, std::pair<uint64_t, int> > migrate_page;
+					auto it = localPageList.begin();
+					std::advance(it, rand() % localPageList.size());
+					migrate_page = std::make_pair(it->first, it->second);
+					localPageList.erase(it->first);
+					return migrate_page;
+				}
+
+		};
+
 
 	}// END OpalComponent
 }//END SST
+
 

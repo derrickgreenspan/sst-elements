@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 //
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 //
 // Portions are copyright of other developers:
@@ -22,8 +22,8 @@ using namespace SST::Firefly;
 
 bool Nic::RecvMachine::Ctx::processPkt( FireflyNetworkEvent* ev ) {
 
-    m_dbg.verbosePrefix(prefix(),CALL_INFO,2,NIC_DBG_RECV_CTX,"got a network pkt from node=%d pid=%d for pid=%d\n",
-                        ev->getSrcNode(),ev->getSrcPid(), m_pid );
+    m_dbg.verbosePrefix(prefix(),CALL_INFO,2,NIC_DBG_RECV_CTX,"got a network pkt from node=%d pid=%d stream=%d for pid=%d size=%zu\n",
+                        ev->getSrcNode(),ev->getSrcPid(), ev->getSrcStream(), m_pid, ev->bufSize() );
 
     if ( ev->isCtrl() ) {
         return processCtrlPkt( ev );
@@ -43,14 +43,15 @@ bool Nic::RecvMachine::Ctx::processCtrlPkt( FireflyNetworkEvent* ev ) {
 
 bool Nic::RecvMachine::Ctx::processStdPkt( FireflyNetworkEvent* ev ) {
     bool blocked = false;
-    SrcKey srcKey = getSrcKey( ev->getSrcNode(), ev->getSrcPid() );
+    SrcKey srcKey = getSrcKey( ev->getSrcNode(), ev->getSrcPid(), ev->getSrcStream() );
 
     StreamBase* stream;
     if ( ev->isHdr() ) {
-        assert ( m_streamMap.find(srcKey) == m_streamMap.end() ); 
 
         stream = newStream( ev );
-        m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_CTX,"new stream %p %s\n",stream, ev->isTail()? "single packet stream":"");
+        m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_CTX,"new stream %p %s node=%d pid=%d stream=%d for pid=%d\n",stream, ev->isTail()? "single packet stream":"",
+               ev->getSrcNode(),ev->getSrcPid(), ev->getSrcStream(), m_pid );
+        assert ( m_streamMap.find(srcKey) == m_streamMap.end() ); 
 
         if ( ! ev->isTail() ) { 
             m_streamMap[srcKey] = stream;
@@ -62,16 +63,18 @@ bool Nic::RecvMachine::Ctx::processStdPkt( FireflyNetworkEvent* ev ) {
         stream = m_streamMap[srcKey]; 
 
         if ( ev->isTail() ) { 
-            m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_CTX,"tail packet %p\n",stream );
+            m_dbg.verbosePrefix(prefix(),CALL_INFO,2,NIC_DBG_RECV_CTX,"tail packet stream=%p\n",stream );
             m_streamMap.erase(srcKey); 
+        } else {
+            m_dbg.verbosePrefix(prefix(),CALL_INFO,2,NIC_DBG_RECV_CTX,"body packet stream=%p\n",stream );
         }
     }
 
     if ( stream->isBlocked() ) {
-        m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_CTX,"stream is blocked %p\n",stream );
+        m_dbg.verbosePrefix(prefix(),CALL_INFO,2,NIC_DBG_RECV_CTX,"stream is blocked stream=%p\n",stream );
         stream->setWakeup( 
             [=]() {
-                m_dbg.verbosePrefix(prefix(),CALL_INFO_LAMBDA,"processStdPkt",1,NIC_DBG_RECV_CTX,"stream is unblocked %p\n",stream );
+                m_dbg.verbosePrefix(prefix(),CALL_INFO_LAMBDA,"processStdPkt",2,NIC_DBG_RECV_CTX,"stream is unblocked stream=%p\n",stream );
                 stream->processPkt( ev );
                 m_rm.checkNetworkForData(); 
             }
@@ -153,7 +156,7 @@ Nic::SendEntryBase* Nic::RecvMachine::Ctx::findGet( int srcNode, int srcPid, Rdm
 
     m_memRgnM.erase(rdmaHdr.rgnNum);
 
-    return new PutOrgnEntry( m_pid, srcNode, srcPid, rdmaHdr.respKey, entry );
+    return new PutOrgnEntry( m_pid, nic().getSendStreamNum(m_pid), srcNode, srcPid, rdmaHdr.respKey, entry );
 }
 
 Nic::DmaRecvEntry* Nic::RecvMachine::Ctx::findPut( int srcNode, MsgHdr& hdr, RdmaMsgHdr& rdmahdr )

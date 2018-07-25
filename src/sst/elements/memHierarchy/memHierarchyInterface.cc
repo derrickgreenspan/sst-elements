@@ -1,9 +1,9 @@
 // -*- mode: c++ -*-
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 //
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 //
 // Portions are copyright of other developers:
@@ -32,6 +32,7 @@ MemHierarchyInterface::MemHierarchyInterface(SST::Component *comp, Params &param
 { 
     output.init("", 1, 0, Output::STDOUT);
     rqstr_ = "";
+    initDone_ = false;
 }
 
 
@@ -58,17 +59,28 @@ void MemHierarchyInterface::init(unsigned int phase) {
                 if (memEvent->getInitCmd() == MemEventInit::InitCommand::Coherence) {
                     MemEventInitCoherence * memEventC = static_cast<MemEventInitCoherence*>(memEvent);
                     baseAddrMask_ = ~(memEventC->getLineSize() - 1);
+                    initDone_ = true;
                 }
             }
         }
         delete ev;
+    }
+
+    if (initDone_) { // Drain send queue
+        while (!initSendQueue_.empty()) {
+            link_->sendInitData(initSendQueue_.front());
+            initSendQueue_.pop();
+        }
     }
     
 }
 
 void MemHierarchyInterface::sendInitData(SimpleMem::Request *req){
     MemEventInit *me = new MemEventInit(getName(), Command::GetX, req->addrs[0], req->data);
-    link_->sendInitData(me);
+    if (initDone_)
+        link_->sendInitData(me);
+    else
+        initSendQueue_.push(me);
 }
 
 

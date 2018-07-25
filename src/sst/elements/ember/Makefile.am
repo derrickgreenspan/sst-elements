@@ -2,7 +2,8 @@
 AM_CPPFLAGS = \
 	$(MPI_CPPFLAGS) \
 	-I$(top_srcdir)/src/sst/elements/ember/sirius/include \
-	-I$(top_srcdir)/src
+	-I$(top_srcdir)/src \
+	$(OTF2_CPPFLAGS)
 
 compdir = $(pkglibdir)
 comp_LTLIBRARIES = libember.la
@@ -178,6 +179,7 @@ libember_la_SOURCES = \
 	shmem/motifs/emberShmemFadd.h \
 	shmem/motifs/emberShmemFcollect.h \
 	shmem/motifs/emberShmemGet.h \
+	shmem/motifs/emberShmemGetNBI.h \
 	shmem/motifs/emberShmemGetv.h \
 	shmem/motifs/emberShmemPut.h \
 	shmem/motifs/emberShmemPutv.h \
@@ -217,3 +219,15 @@ libember_la_SOURCES += \
 	embermpicxtgen.h \
 	embermpicxtgen.cc
 endif
+
+if EMBER_HAVE_OTF2
+libember_la_SOURCES += \
+	mpi/motifs/emberotf2.h \
+	mpi/motifs/emberotf2.cc
+
+libember_la_LIBADD = \
+	$(OTF2_LDFLAGS) \
+	$(OTF2_LIBS)
+
+endif
+

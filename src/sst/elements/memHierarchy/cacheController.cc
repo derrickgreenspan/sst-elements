@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 // 
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 // 
 // Portions are copyright of other developers:
@@ -612,10 +612,6 @@ void Cache::postRequestProcessing(MemEvent* event, CacheLine* cacheLine, bool re
     Command cmd = event->getCmd();
     Addr addr   = event->getBaseAddr();
 
-    /* Clean up */
-    if (event->isPrefetch() && event->getRqstr() == this->getName() && !replay) {
-        statPrefetchHit->addData(1);
-    }
     recordLatency(event);
     delete event;
     
@@ -756,6 +752,7 @@ void Cache::printStatus(Output &out) {
 }
 
 void Cache::emergencyShutdown() {
-    printStatus(*out_);
+    if (out_->getVerboseLevel() > 1)
+        printStatus(*out_);
 }
 

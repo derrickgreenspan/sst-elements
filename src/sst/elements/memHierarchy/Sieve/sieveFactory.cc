@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 // 
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 // 
 // Portions are copyright of other developers:
@@ -76,6 +76,9 @@ Sieve::Sieve(ComponentId_t id, Params &params) : Component(id) {
     // optional link for allocation / free tracking
     configureLinks();
 
+    /* Load profiler, if any */
+    createProfiler(params);
+
     /* Register statistics */
     statReadHits    = registerStatistic<uint64_t>("ReadHits");
     statReadMisses  = registerStatistic<uint64_t>("ReadMisses");
@@ -112,4 +115,17 @@ void Sieve::configureLinks() {
     }
 }
 
-    }}
+void Sieve::createProfiler(const Params &params) {
+    string profiler = params.find<std::string>("profiler", "");
+
+    if (profiler.empty()) {
+	listener_ = 0;
+    } else {
+	Params profilerParams = params.find_prefix_params("profiler." );
+        listener_ = dynamic_cast<CacheListener*>(loadSubComponent(profiler, this, profilerParams));        
+    }
+
+}
+
+
+    }} // end namespaces

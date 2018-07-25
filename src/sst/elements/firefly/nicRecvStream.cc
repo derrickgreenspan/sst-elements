@@ -1,8 +1,8 @@
-// Copyright 2009-2017 Sandia Corporation. Under the terms
-// of Contract DE-NA0003525 with Sandia Corporation, the U.S.
+// Copyright 2009-2018 NTESS. Under the terms
+// of Contract DE-NA0003525 with NTESS, the U.S.
 // Government retains certain rights in this software.
 //
-// Copyright (c) 2009-2017, Sandia Corporation
+// Copyright (c) 2009-2018, NTESS
 // All rights reserved.
 //
 // Portions are copyright of other developers:
@@ -30,13 +30,20 @@ Nic::RecvMachine::StreamBase::StreamBase(Output& output, Ctx* ctx, int srcNode, 
 }
 
 Nic::RecvMachine::StreamBase::~StreamBase() {
-    m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_STREAM,"this=%p latency=%" PRIu64 "\n",this,
-                                            m_ctx->nic().getCurrentSimTimeNano()-m_start);
+
+    size_t totalBytes = 0;
     if ( m_recvEntry ) {
         m_recvEntry->notify( m_srcPid, m_srcNode, m_matched_tag, m_matched_len );
+        totalBytes = m_recvEntry->totalBytes();
         delete m_recvEntry;
     }
+
+    m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_STREAM,"this=%p bytes=%zu latency=%" PRIu64 "\n",this,
+                                            totalBytes, m_ctx->nic().getCurrentSimTimeNano()-m_start);
+
     if ( m_sendEntry ) {
+        m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_STREAM,"core=%d targetNode=%d targetCore=%d\n",
+                getMyPid(), m_sendEntry->dest(), m_sendEntry->dst_vNic() );
         m_ctx->nic().qSendEntry( m_sendEntry );
     }
 }
@@ -83,7 +90,6 @@ void Nic::RecvMachine::StreamBase::ready( bool finished, uint64_t pktNum ) {
         m_dbg.verbosePrefix(prefix(),CALL_INFO,2,NIC_DBG_RECV_STREAM, "this stream is done\n");
         m_ctx->deleteStream( this );
     }
-
     if ( m_wakeupCallback ) {
         m_dbg.verbosePrefix(prefix(),CALL_INFO,1,NIC_DBG_RECV_STREAM, "wakeup recv machine\n");
         m_wakeupCallback( );
